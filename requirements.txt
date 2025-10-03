@@ -1,0 +1,16 @@
+# 核心功能庫
+requests
+pandas
+beautifulsoup4
+lxml
+
+# 常用網路工具
+urllib3
+charset-normalizer
+requests-toolbelt
+
+# 數據處理所需的核心依賴
+numpy
+pytz
+python-dateutil
+typing_extensions
