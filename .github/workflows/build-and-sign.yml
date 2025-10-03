@@ -19,28 +19,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 1. 設定 Python 環境
-      - name: Set up Python 3.11
+      # 1. 修正：設定 Python 環境並明確指定快取依賴檔案路徑
+      - name: Set up Python 3.11 and Cache Dependencies
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
+          # 顯式指定 requirements.txt 作為快取鍵的來源
+          cache-dependency-path: requirements.txt 
 
-      # 2. 安裝 Nuitka 和所有依賴
-      # 根據您先前 crash report 的資訊，我們將安裝所有需要的套件
-      - name: Install dependencies (Nuitka & Libraries)
+      # 2. 修正：安裝所有依賴，包括 Nuitka
+      # 現在我們只使用 requirements.txt 檔案來安裝，這樣才能正確利用快取
+      - name: Install All Dependencies (using requirements.txt)
         shell: powershell
         run: |
-          pip install nuitka
-          pip install requests lxml pandas typing_extensions numpy zstandard charset-normalizer idna python-dateutil pytz six soupsieve urllib3
-
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          
       # 3. 執行您的 Nuitka 編譯指令
       - name: Run Nuitka Compilation
         shell: powershell
         run: |
-          # 這裡使用您的原始指令，但使用括號 () 和換行符號 `，
-          # 避免之前在本地 PowerShell 遇到的解析錯誤。
-          # 由於 GitHub Actions 環境乾淨，圖示錯誤應該不會再發生。
+          # 這裡使用您的原始指令。請確保您的 icon.ico 在根目錄。
           python -m nuitka v2_1.py `
             --onefile `
             --standalone `
@@ -64,7 +64,6 @@ jobs:
           EXE_PATH: v2_1.dist/v2_1.exe # Nuitka 的輸出路徑
         run: |
           # 由於 Cosign 對於本地檔案簽章的語法要求嚴格，我們使用 sign-blob
-          # 並使用 OIDC 身份驗證，完全跳過本地金鑰和密碼。
           cosign sign-blob `
           --output-signature $env:EXE_PATH.sig `
           --output-certificate $env:EXE_PATH.pem `
