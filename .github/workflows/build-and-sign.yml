@@ -1,0 +1,83 @@
+name: Build and Sign Windows Executable (Nuitka)
+
+on:
+  push:
+    tags:
+      - 'v*' # 當你推送一個以 'v' 開頭的標籤時觸發 (例如 v1.0.0)
+  workflow_dispatch: # 允許手動在 GitHub 介面觸發
+
+jobs:
+  build_and_sign:
+    runs-on: windows-latest # 選擇 Windows 環境來編譯 Windows EXE
+
+    # 設置 OIDC 權限，這是 Sigstore 無金鑰簽章的必要步驟
+    permissions:
+      id-token: write # 允許獲取 OIDC 身份令牌
+      contents: write # 允許上傳文件到 GitHub Release
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 1. 設定 Python 環境
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # 2. 安裝 Nuitka 和所有依賴
+      # 根據您先前 crash report 的資訊，我們將安裝所有需要的套件
+      - name: Install dependencies (Nuitka & Libraries)
+        shell: powershell
+        run: |
+          pip install nuitka
+          pip install requests lxml pandas typing_extensions numpy zstandard charset-normalizer idna python-dateutil pytz six soupsieve urllib3
+
+      # 3. 執行您的 Nuitka 編譯指令
+      - name: Run Nuitka Compilation
+        shell: powershell
+        run: |
+          # 這裡使用您的原始指令，但使用括號 () 和換行符號 `，
+          # 避免之前在本地 PowerShell 遇到的解析錯誤。
+          # 由於 GitHub Actions 環境乾淨，圖示錯誤應該不會再發生。
+          python -m nuitka v2_1.py `
+            --onefile `
+            --standalone `
+            --enable-plugin=tk-inter `
+            --include-module=typing_extensions `
+            --follow-imports `
+            --windows-console-mode=attach `
+            --windows-icon-from-ico=icon.ico
+
+      # Nuitka 輸出檔案的路徑：v2_1.dist/v2_1.exe
+      # -------------------------------------------------------------
+
+      # 4. 下載 Cosign (Sigstore) 工具
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.5.0
+      
+      # 5. 執行無金鑰簽章 (使用官方推薦的 sign-blob 模式)
+      - name: Sign the executable with Sigstore
+        shell: powershell
+        env:
+          EXE_PATH: v2_1.dist/v2_1.exe # Nuitka 的輸出路徑
+        run: |
+          # 由於 Cosign 對於本地檔案簽章的語法要求嚴格，我們使用 sign-blob
+          # 並使用 OIDC 身份驗證，完全跳過本地金鑰和密碼。
+          cosign sign-blob `
+          --output-signature $env:EXE_PATH.sig `
+          --output-certificate $env:EXE_PATH.pem `
+          --oidc-client-id "sigstore" `
+          --oidc-issuer "https://token.actions.githubusercontent.com" `
+          $env:EXE_PATH
+
+      # 6. 將檔案上傳到 GitHub Release
+      - name: Upload Signed Files to Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            v2_1.dist/v2_1.exe
+            v2_1.dist/v2_1.exe.sig
+            v2_1.dist/v2_1.exe.pem
