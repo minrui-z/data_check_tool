@@ -1,0 +1,21 @@
+# pyproject.toml
+
+[tool.poetry]
+name = "visit-record-checker"
+version = "2.1.0"
+description = "A GUI application for crawling and checking survey visit records."
+authors = ["Your Name <you@example.com>"] # 請替換成您的名字和Email
+license = "MIT" # 授權協議，可依需求更改
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.12" # 根據您使用的 Python 版本調整
+requests = "^2.28.1"
+beautifulsoup4 = "^4.11.1"
+lxml = "^4.9.1"
+pandas = "^1.5.0"
+# tkinter 在大部分 Python 安裝中是內建的，不需要在此處列出。
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
