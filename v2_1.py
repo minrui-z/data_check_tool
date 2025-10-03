@@ -15,7 +15,7 @@ import pandas as pd
 import threading
 import time
 
-# ---------------------- Basic Config (部分改為從 GUI 傳入) ----------------------
+# ---------------------- Basic Config ----------------------
 BASE_URL = "https://esccapi.nccu.edu.tw"
 LIST_PATH_TMPL = "/admin/project/{project}/wave/{wave}/survey-work/list?page={page}"
 EDIT_BASE_TMPL = "/admin/project/{project}/wave/{wave}/survey-work/edit/{work_id}"
