@@ -48,8 +48,8 @@ jobs:
             --include-module=typing_extensions `
             --follow-imports `
             --windows-console-mode=attach `
-            --windows-icon-from-ico=icon.ico
-            --include-dependency-tool=yes
+            --windows-icon-from-ico=icon.ico `
+            --assume-yes-for-downloads
 
       # Nuitka 輸出檔案的路徑：v2_1.dist/v2_1.exe
       # -------------------------------------------------------------
