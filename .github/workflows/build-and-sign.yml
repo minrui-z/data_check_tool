@@ -1,82 +1,63 @@
-name: Build and Sign Windows Executable (Nuitka)
+name: Build and Sign Windows Executable (PyInstaller)
 
 on:
   push:
     tags:
-      - 'v*' # 當你推送一個以 'v' 開頭的標籤時觸發 (例如 v1.0.0)
-  workflow_dispatch: # 允許手動在 GitHub 介面觸發
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build_and_sign:
-    runs-on: windows-latest # 選擇 Windows 環境來編譯 Windows EXE
-
-    # 設置 OIDC 權限，這是 Sigstore 無金鑰簽章的必要步驟
+    runs-on: windows-latest
     permissions:
-      id-token: write # 允許獲取 OIDC 身份令牌
-      contents: write # 允許上傳文件到 GitHub Release
-
+      id-token: write
+      contents: write
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # 1. 修正：設定 Python 環境並明確指定快取依賴檔案路徑
-      - name: Set up Python 3.11 and Cache Dependencies
+      
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-          # 顯式指定 requirements.txt 作為快取鍵的來源
-          cache-dependency-path: requirements.txt 
-
-      # 2. 修正：安裝所有依賴，包括 Nuitka
-      # 現在我們只使用 requirements.txt 檔案來安裝，這樣才能正確利用快取
-      - name: Install All Dependencies (using requirements.txt)
+          cache-dependency-path: requirements.txt
+      
+      - name: Install Dependencies
         shell: powershell
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          
-      # 3. 執行您的 Nuitka 編譯指令
-      - name: Run Nuitka Compilation
+          pip install pyinstaller
+      
+      - name: Build with PyInstaller
         shell: powershell
         run: |
-          python -m nuitka v2_1.py `
-            --onefile `
-            --standalone `
-            --enable-plugin=tk-inter `
-            --include-module=typing_extensions `
-            --follow-imports `
-            --windows-console-mode=attach `
-            --windows-icon-from-ico=icon.ico `
-            --assume-yes-for-downloads
-
-      # Nuitka 輸出檔案的路徑：v2_1.dist/v2_1.exe
-      # -------------------------------------------------------------
-
-      # 4. 下載 Cosign (Sigstore) 工具
+          pyinstaller --onefile `
+            --noconsole `
+            --icon=icon.ico `
+            --name=v2_1 `
+            v2_1.py
+      
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.5.0
       
-      # 5. 執行無金鑰簽章 (使用官方推薦的 sign-blob 模式)
       - name: Sign the executable with Sigstore
         shell: powershell
-        env:
-          EXE_PATH: v2_1.dist/v2_1.exe # Nuitka 的輸出路徑
         run: |
-          # 由於 Cosign 對於本地檔案簽章的語法要求嚴格，我們使用 sign-blob
           cosign sign-blob `
-          --output-signature $env:EXE_PATH.sig `
-          --output-certificate $env:EXE_PATH.pem `
-          --oidc-client-id "sigstore" `
-          --oidc-issuer "https://token.actions.githubusercontent.com" `
-          $env:EXE_PATH
-
-      # 6. 將檔案上傳到 GitHub Release
+            --output-signature dist/v2_1.exe.sig `
+            --output-certificate dist/v2_1.exe.pem `
+            --oidc-client-id "sigstore" `
+            --oidc-issuer "https://token.actions.githubusercontent.com" `
+            dist/v2_1.exe
+      
       - name: Upload Signed Files to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            v2_1.dist/v2_1.exe
-            v2_1.dist/v2_1.exe.sig
-            v2_1.dist/v2_1.exe.pem
+            dist/v2_1.exe
+            dist/v2_1.exe.sig
+            dist/v2_1.exe.pem
