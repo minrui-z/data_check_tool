@@ -37,8 +37,8 @@ jobs:
           pyinstaller --onefile `
             --noconsole `
             --icon=icon.ico `
-            --name=v2_1 `
-            v2_1.py
+            --name=樣本檢查工具 `
+            樣本檢查工具.py
       
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3.5.0
@@ -52,13 +52,13 @@ jobs:
             --output-certificate dist/v2_1.exe.pem `
             --oidc-client-id "sigstore" `
             --oidc-issuer "https://token.actions.githubusercontent.com" `
-            dist/v2_1.exe
+            dist/樣本檢查工具.exe
       
       - name: Upload Signed Files to Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            dist/v2_1.exe
-            dist/v2_1.exe.sig
-            dist/v2_1.exe.pem
+            dist/樣本檢查工具.exe
+            dist/樣本檢查工具.exe.sig
+            dist/樣本檢查工具.exe.pem
