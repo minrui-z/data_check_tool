@@ -5,7 +5,6 @@ lxml
 pandas
 
 # 打包工具與 Tkinter/Data 依賴
-nuitka
 typing_extensions
 numpy
 zstandard
@@ -16,3 +15,4 @@ pytz
 six
 soupsieve
 urllib3
+customtkinter
