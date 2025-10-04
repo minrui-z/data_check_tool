@@ -13,24 +13,24 @@
 - Windows 10以上作業系統
 
 ### 2. 執行程式
-請於Release下載```樣本檢查工具.exe```，後點擊執行，若有簽署需求請依循下列步驟：
+請於Release下載```sample_checker.exe```，後點擊執行，若有簽署需求請依循下列步驟：
 ```
 # 1. 安裝 cosign (一次性)
 # Windows: 到 https://github.com/sigstore/cosign/releases 下載 cosign-windows-amd64.exe
 # 重新命名為 cosign.exe 並加入 PATH
 
 # 2. 把三個檔案放在同一個資料夾
-# - 樣本檢查工具.exe
-# - 樣本檢查工具.exe.sig
-# - 樣本檢查工具.exe.pem
+# - sample_checker.exe
+# - sample_checker.exe.sig
+# - sample_checker.exe.pem
 
 # 3. 執行驗證
 cosign verify-blob ^
-  --certificate 樣本檢查工具.exe.pem ^
-  --signature 樣本檢查工具.exe.sig ^
+  --certificate sample_checker.exe.pem ^
+  --signature sample_checker.exe.sig ^
   --certificate-identity-regexp "https://github.com/minrui-z/data_check_tool/.*" ^
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" ^
-  樣本檢查工具.exe
+  sample_checker.exe
 ```
 
 ### 3. 程式流程
