@@ -47,6 +47,7 @@ jobs:
         shell: powershell
         run: |
           cosign sign-blob `
+            --yes `
             --output-signature dist/v2_1.exe.sig `
             --output-certificate dist/v2_1.exe.pem `
             --oidc-client-id "sigstore" `
