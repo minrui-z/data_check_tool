@@ -40,7 +40,6 @@ jobs:
       - name: Run Nuitka Compilation
         shell: powershell
         run: |
-          # 這裡使用您的原始指令。請確保您的 icon.ico 在根目錄。
           python -m nuitka v2_1.py `
             --onefile `
             --standalone `
