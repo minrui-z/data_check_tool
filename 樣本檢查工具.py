@@ -1,5 +1,6 @@
+import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import messagebox, filedialog
 import os
 import sys
 import re
@@ -15,21 +16,21 @@ import pandas as pd
 import threading
 import time
 
+# =================================================================
+# 核心爬蟲與檢查邏輯 (與 V2.2 保持一致，僅替換了 GUI 庫)
+# =================================================================
+
 # ---------------------- Basic Config ----------------------
 BASE_URL = "https://esccapi.nccu.edu.tw"
 LIST_PATH_TMPL = "/admin/project/{project}/wave/{wave}/survey-work/list?page={page}"
 EDIT_BASE_TMPL = "/admin/project/{project}/wave/{wave}/survey-work/edit/{work_id}"
 
-# OUTPUT_CSV, DEBUG_DIR 將從 GUI 的執行函式中決定
-
-# 並行設定
 MAX_WORKERS = 15
 TIMEOUT = 15
 
 # 爬蟲的日誌器
 crawler_logger = logging.getLogger("Crawler")
 crawler_logger.setLevel(logging.INFO)
-# 避免重複設定 Handler
 if not crawler_logger.handlers:
     ch = logging.StreamHandler()
     formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
@@ -38,7 +39,6 @@ if not crawler_logger.handlers:
 
 # ---------------------- Session Factory ----------------------
 def create_session() -> requests.Session:
-    # 邏輯與 v6.0.1 相同
     s = requests.Session()
     s.headers.update({
         "User-Agent": "Mozilla/5.0",
@@ -112,7 +112,6 @@ def fetch_csrf_and_login(session: requests.Session, email: str, password: str) -
 
 # ---------------------- List Parsing ----------------------
 def parse_list_page_for_items(html: str):
-    # 邏輯與 v6.0.1 相同
     soup = BeautifulSoup(html, "lxml")
     items = []
     for tr in soup.select("table tbody tr"):
@@ -154,7 +153,6 @@ def parse_list_page_for_items(html: str):
 
 
 def detect_max_page_from_html(soup: BeautifulSoup) -> int:
-    # 邏輯與 v6.0.1 相同
     max_page = 1
     for a in soup.select("ul.pagination a.page-link[href]"):
         href = a.get("href", "")
@@ -163,9 +161,8 @@ def detect_max_page_from_html(soup: BeautifulSoup) -> int:
             max_page = max(max_page, int(m.group(1)))
     return max_page
 
-# ---------------------- Visit Parsing (修正版) ----------------------
+# ---------------------- Visit Parsing ----------------------
 def parse_visits_from_visit_html(html: str) -> List[Dict[str, Optional[str]]]:
-    # 邏輯與 v6.0.1 相同
     soup = BeautifulSoup(html, "lxml")
     table = soup.select_one("div.grid-table table.table")
     if not table:
@@ -174,30 +171,25 @@ def parse_visits_from_visit_html(html: str) -> List[Dict[str, Optional[str]]]:
     visits = []
     for tr in table.select("tbody tr"):
         tds = tr.find_all("td")
-        if len(tds) < 5:  # 至少要有5欄
+        if len(tds) < 5:
             continue
         
-        # 第1欄：日期
         raw_date = tds[0].get_text(strip=True) or ""
         m = re.search(r"\d{4}-\d{2}-\d{2}", raw_date)
         date_txt = m.group(0) if m else ""
         
-        # 第2欄：時段（直接文字）
         session_txt = tds[1].get_text(strip=True)
         
-        # 第3欄：結果代碼（在 div 內）
         code_txt = ""
         code_div = tds[2].select_one("div.d-flex > div")
         if code_div:
             code_txt = code_div.get_text(strip=True)
         
-        # 第4欄：觀看提交連結
         view_url = None
         view_link = tds[3].select_one("a[href*='/form-result/view/']")
         if view_link:
             view_url = view_link.get("href")
         
-        # 第5欄：填答記錄連結
         log_url = None
         log_link = tds[4].select_one("a[href*='/form-result/logs/']")
         if log_link:
@@ -215,14 +207,12 @@ def parse_visits_from_visit_html(html: str) -> List[Dict[str, Optional[str]]]:
 
 # ---------------------- Check Questionnaire Status ----------------------
 def check_questionnaire_result_code(html: str) -> str:
-    # 邏輯與 v6.0.1 相同
     soup = BeautifulSoup(html, "lxml")
     tables = soup.select("table.table.table-bordered")
     
     if len(tables) < 1:
         return "未填寫"
     
-    # 第一個表格是樣本資訊表
     first_table = tables[0]
     
     for tr in first_table.select("tbody tr"):
@@ -230,7 +220,6 @@ def check_questionnaire_result_code(html: str) -> str:
         if len(tds) < 2:
             continue
         
-        # 找到「結果代碼」那一列
         for i in range(len(tds) - 1):
             if tds[i].name == "th" and "結果代碼" in tds[i].get_text(strip=True):
                 code = tds[i + 1].get_text(strip=True)
@@ -243,7 +232,6 @@ def check_questionnaire_result_code(html: str) -> str:
 
 
 def check_questionnaires_status(session: requests.Session, work_id: str, project: int, wave: int) -> Dict[str, str]:
-    # 邏輯與 v6.0.1 相同
     result = {
         "sampling": "未填寫",      # 戶中抽樣
         "sampling_q": "未填寫",    # 戶抽問卷
@@ -259,35 +247,28 @@ def check_questionnaires_status(session: requests.Session, work_id: str, project
         
         soup = BeautifulSoup(r.text, "lxml")
         
-        # 遍歷所有問卷列
         for tr in soup.select("table tbody tr"):
             tds = tr.find_all("td")
             if len(tds) < 3:
                 continue
             
-            # 第2欄是問卷標題
             title = tds[1].get_text(strip=True)
             
-            # 第3欄是「問卷結果」連結
             link = tds[2].select_one("a[href*='/form-result/view/']")
             
             if link:
                 questionnaire_url = urljoin(BASE_URL, link.get("href"))
                 
-                # 抓取問卷頁面並檢查結果代碼
                 try:
                     rq = session.get(questionnaire_url, timeout=TIMEOUT, allow_redirects=True)
                     if rq.status_code == 200:
                         html_content = rq.content.decode('utf-8', errors='replace')
                         status = check_questionnaire_result_code(html_content)
                         
-                        # 戶中抽樣
                         if "戶中抽樣" in title and "問卷" not in title:
                             result["sampling"] = status
-                        # 戶抽問卷
                         elif "戶抽問卷" in title:
                             result["sampling_q"] = status
-                        # 訪問記錄問卷
                         elif "訪問記錄問卷" in title or "訪問記錄" in title:
                             result["interview_record"] = status
                 except Exception as e:
@@ -300,14 +281,13 @@ def check_questionnaires_status(session: requests.Session, work_id: str, project
 
 
 def parse_t16_from_visit_survey(html: str, work_id: str = "", debug: bool = False) -> str:
-    # 邏輯與 v6.0.1 相同
     soup = BeautifulSoup(html, "lxml")
     tables = soup.select("table.table.table-bordered")
     
     if len(tables) < 2:
         return "未填寫"
     
-    target_table = tables[1]  # 第2個表格是問卷內容
+    target_table = tables[1]
     
     for tr in target_table.select("tbody tr"):
         tds = tr.find_all("td")
@@ -317,17 +297,14 @@ def parse_t16_from_visit_survey(html: str, work_id: str = "", debug: bool = Fals
         first_col = tds[0].get_text(" ", strip=True)
         
         if "T16" in first_col:
-            # 複選題的答案可能在多個 div 裡，或者是純文字
             answer_cell = tds[2]
             
-            # 先嘗試抓 div（複選題每個選項一個 div）
             divs = answer_cell.select("div")
             if divs:
                 answers = [div.get_text(strip=True) for div in divs if div.get_text(strip=True)]
                 if answers:
                     return "; ".join(answers)
             
-            # 如果沒有 div，直接抓文字
             answer_text = answer_cell.get_text(strip=True)
             if answer_text:
                 return answer_text
@@ -339,7 +316,6 @@ def parse_t16_from_visit_survey(html: str, work_id: str = "", debug: bool = Fals
 
 # ---------------------- Get Visit Survey URL ----------------------
 def get_visit_survey_url(session: requests.Session, work_id: str, project: int, wave: int) -> Optional[str]:
-    # 邏輯與 v6.0.1 相同
     record_url = urljoin(BASE_URL, EDIT_BASE_TMPL.format(project=project, wave=wave, work_id=work_id) + "/record")
     
     try:
@@ -349,16 +325,13 @@ def get_visit_survey_url(session: requests.Session, work_id: str, project: int, 
         
         soup = BeautifulSoup(r.text, "lxml")
         
-        # 找到包含「TEDS2025_訪視問卷」的列
         for tr in soup.select("table tbody tr"):
             tds = tr.find_all("td")
             if len(tds) < 3:
                 continue
             
-            # 第2欄是問卷標題
             title = tds[1].get_text(strip=True)
             if "TEDS2025_訪視問卷" in title or "訪視問卷" in title:
-                # 第3欄是「問卷結果」按鈕
                 link = tds[2].select_one("a[href*='/form-result/view/']")
                 if link:
                     return link.get("href")
@@ -370,25 +343,17 @@ def get_visit_survey_url(session: requests.Session, work_id: str, project: int, 
 
 
 def parse_contact_from_view(html: str, work_id: str = "", debug: bool = False) -> Tuple[str, str]:
-    # 邏輯與 v6.0.1 相同
     soup = BeautifulSoup(html, "lxml")
     
-    # 取得所有 table.table.table-bordered 表格
     tables = soup.select("table.table.table-bordered")
     
-    if debug and work_id:
-        crawler_logger.info(f"WorkID={work_id}: 找到 {len(tables)} 個表格")
-    
-    # 通常第1個是樣本資訊表，第2個才是問卷內容表
     target_table = None
     if len(tables) >= 2:
-        target_table = tables[1]  # 第2個表格
+        target_table = tables[1]
     elif len(tables) == 1:
-        target_table = tables[0]  # 只有1個就用它
+        target_table = tables[0]
     
     if not target_table:
-        if debug and work_id:
-            crawler_logger.error(f"WorkID={work_id}: 完全找不到任何表格！")
         return ("未填寫", "")
 
     for idx, tr in enumerate(target_table.select("tbody tr")):
@@ -396,29 +361,20 @@ def parse_contact_from_view(html: str, work_id: str = "", debug: bool = False) -
         if len(tds) < 4:
             continue
         
-        # 檢查第1欄是否包含 T03
         first_col = tds[0].get_text(" ", strip=True)
         
         if "T03" in first_col:
-            answer = tds[2].get_text(strip=True)      # 第3欄：完整答案
-            answered_at = tds[3].get_text(strip=True)  # 第4欄：填答時間
+            answer = tds[2].get_text(strip=True)
+            answered_at = tds[3].get_text(strip=True)
             
-            if debug and work_id:
-                crawler_logger.info(f"WorkID={work_id}: 找到 T03！答案='{answer}', 時間='{answered_at}'")
-            
-            # 如果答案為空，標記為未填寫
             if not answer:
                 answer = "未填寫"
             
             return (answer, answered_at)
 
-    # 沒有找到 T03 題目
-    if debug and work_id:
-        crawler_logger.warning(f"WorkID={work_id}: 遍歷完所有列，沒有找到 T03")
     return ("未填寫", "")
 
 # ---------------------- Process Single Item (v2 with debug_work_ids) ----------------------
-# 為了進度條，將此函數獨立，並傳入進度更新的回呼函式
 def process_single_item_v2(
     session: requests.Session, 
     item: Dict, 
@@ -439,11 +395,9 @@ def process_single_item_v2(
     
     rows = []
     
-    # 每次處理前更新進度
     update_progress_callback(item_idx, total, f"處理樣本: {sample_id} ({work_id})")
 
     try:
-        # ... (中間的邏輯與 v6.0.1.py 相同) ...
         record_url = urljoin(BASE_URL, EDIT_BASE_TMPL.format(project=project, wave=wave, work_id=work_id) + "/visit")
         r = session.get(record_url, timeout=TIMEOUT, allow_redirects=True)
         
@@ -478,40 +432,24 @@ def process_single_item_v2(
         for v in visits:
             contact_answer = "未填寫"
             contact_time = ""
-            t16_answer = "未填寫"  # 新增 T16
+            t16_answer = "未填寫"
             has_fill = "0"
             view_url_abs = urljoin(BASE_URL, v["view_url"]) if v.get("view_url") else ""
             
             if view_url_abs:
                 has_fill = "1"
                 try:
-                    if is_debug:
-                        crawler_logger.info(f"[DEBUG] WorkID={work_id} 準備抓取 view_url: {view_url_abs}")
-                    
                     rv = session.get(view_url_abs, timeout=TIMEOUT, allow_redirects=True)
-                    
-                    if is_debug:
-                        crawler_logger.info(f"[DEBUG] WorkID={work_id} GET status={rv.status_code}, encoding={rv.encoding}")
                     
                     if rv.status_code == 200:
                         try:
                             html_content = rv.content.decode('utf-8', errors='replace')
                         except Exception:
-                            html_content = rv.text  # 最後手段
-                        
-                        if is_debug:
-                            has_t03 = 'T03' in html_content
-                            has_garbled = 'æŽ¥è§¸æ–¹å¼' in html_content or 'Ã¦Å½' in html_content
-                            crawler_logger.info(f"[DEBUG] WorkID={work_id} HTML長度={len(html_content)}, 有T03={has_t03}, 有亂碼={has_garbled}")
-                            # 儲存 HTML 以便檢查
-                            #Path(f"debug_visit_html/view_{work_id}_{v['date']}.html").write_text(html_content, encoding="utf-8")
+                            html_content = rv.text
                         
                         ans, ts = parse_contact_from_view(html_content, work_id=work_id, debug=is_debug)
                         contact_answer = ans
                         contact_time = ts
-                        
-                        if is_debug:
-                            crawler_logger.info(f"[DEBUG] WorkID={work_id} 解析結果: ans='{ans}', ts='{ts}'")
                         
                         if ans != "未填寫":
                             has_fill = "1"
@@ -524,7 +462,6 @@ def process_single_item_v2(
             elif v.get("log_url"):
                 has_fill = "0"
             
-            # 新增：抓取訪視問卷 T16
             try:
                 visit_survey_url = get_visit_survey_url(session, work_id, project, wave)
                 if visit_survey_url:
@@ -533,13 +470,9 @@ def process_single_item_v2(
                     if rv_visit.status_code == 200:
                         visit_html = rv_visit.content.decode('utf-8', errors='replace')
                         t16_answer = parse_t16_from_visit_survey(visit_html, work_id=work_id, debug=is_debug)
-                        
-                        if is_debug:
-                            crawler_logger.info(f"[DEBUG] WorkID={work_id} T16答案: {t16_answer}")
             except Exception as e:
                 crawler_logger.debug(f"獲取 T16 失敗 WorkID={work_id}: {e}")
             
-            # 新增：檢查三個問卷狀態（每個 work 只需檢查一次，所以放在外層）
             questionnaire_status = {"sampling": "未填寫", "sampling_q": "未填寫", "interview_record": "未填寫"}
             
             rows.append({
@@ -562,7 +495,6 @@ def process_single_item_v2(
                 "HasFill": has_fill,
             })
         
-        # 在處理完所有訪次後，統一檢查問卷狀態並更新所有訪次列
         try:
             questionnaire_status = check_questionnaires_status(session, work_id, project, wave)
             for row in rows:
@@ -581,17 +513,11 @@ def process_single_item_v2(
 
 # ---------------------- Main Crawl (修改為支援 GUI 進度更新) ----------------------
 def crawl_from_main_list(session: requests.Session, project: int, wave: int, update_progress_callback, output_dir: Path) -> List[Dict[str, str]]:
-    """主爬取邏輯（並行處理），加入進度回呼函式"""
-    
-    #DEBUG_DIR = output_dir / "debug_visit_html"
-    #DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-    
     update_progress_callback(0, 100, "1/4: 嘗試登入並獲取清單...")
     
     first_url = urljoin(BASE_URL, LIST_PATH_TMPL.format(project=project, wave=wave, page=1))
     r0 = session.get(first_url, timeout=TIMEOUT, allow_redirects=True)
     r0.raise_for_status()
-    #(output_dir / "list_page_1.html").write_text(r0.text, encoding="utf-8")
     
     items, max_page = parse_list_page_for_items(r0.text)
     crawler_logger.info(f"偵測到 {max_page} 個分頁")
@@ -601,10 +527,6 @@ def crawl_from_main_list(session: requests.Session, project: int, wave: int, upd
         for p in range(2, max_page + 1):
             url = urljoin(BASE_URL, LIST_PATH_TMPL.format(project=project, wave=wave, page=p))
             r = session.get(url, timeout=TIMEOUT, allow_redirects=True)
-            #if r.status_code != 200:
-            #    crawler_logger.warning(f"Page {p}: status {r.status_code}")
-            #    continue
-            #(output_dir / f"list_page_{p}.html").write_text(r.text, encoding="utf-8")
             items_p, _ = parse_list_page_for_items(r.text)
             items.extend(items_p)
     
@@ -638,11 +560,9 @@ def crawl_from_main_list(session: requests.Session, project: int, wave: int, upd
         for idx, item in enumerate(items, 1):
             worker_session = create_session()
             worker_session.cookies.update(session.cookies)
-            # 傳入進度更新回呼函式
             future = executor.submit(
                 process_single_item_v2, 
                 worker_session, item, project, wave, idx, len(items), debug_work_ids, 
-                # 為了避免在主執行緒更新 GUI 導致錯誤，這裡只傳遞一個將訊息放入佇列的函式
                 lambda current, total, message: update_progress_callback(
                     25 + int(70 * current / total), 100, 
                     f"3/4: ({current}/{total}) {message}"
@@ -658,7 +578,6 @@ def crawl_from_main_list(session: requests.Session, project: int, wave: int, upd
                 all_rows.extend(rows)
                 completed += 1
                 
-                # 更新總進度條
                 update_progress_callback(
                     25 + int(70 * completed / len(items)), 100, 
                     f"3/4: ({completed}/{len(items)}) 樣本 {work_id} 完成"
@@ -671,12 +590,10 @@ def crawl_from_main_list(session: requests.Session, project: int, wave: int, upd
 
 # ---------------------- CSV Output ----------------------
 def write_csv(rows: List[Dict[str, str]], path: str) -> str:
-    # 邏輯與 v6.0.1 相同
     if not rows:
         crawler_logger.info("無資料可寫出")
         return ""
     
-    # 定義固定的欄位順序
     fieldnames = [
         "SampleID", "WorkID", "Date", "Session", "ResultCode", "RecordURL",
         "ViewURL", "LogsURL", "InterviewerNo", "InterviewerName",
@@ -684,7 +601,6 @@ def write_csv(rows: List[Dict[str, str]], path: str) -> str:
         "Sampling", "SamplingQ", "InterviewRecord", "HasFill",
     ]
     
-    # 確保所有列都有這些欄位（缺少的補空字串）
     for row in rows:
         for field in fieldnames:
             if field not in row:
@@ -702,15 +618,11 @@ def write_csv(rows: List[Dict[str, str]], path: str) -> str:
         return ""
 
 # =================================================================
-# 核心功能區塊 - 來自 v1.1_check.py (檢查)
-# 邏輯保持不變
+# 核心功能區塊 - 檢查邏輯
 # =================================================================
-
-# ------------------------------ 小工具 ------------------------------
 
 def norm(s) -> str:
     return "" if s is None else str(s).strip()
-
 
 def is_filled(v: str) -> bool:
     s = norm(v)
@@ -719,7 +631,6 @@ def is_filled(v: str) -> bool:
     if s in {"未填寫", "未填", "NA", "N/A", "None", "null"}:
         return False
     return True
-
 
 def normalize_result_code(code: str):
     s = norm(code)
@@ -730,26 +641,17 @@ def normalize_result_code(code: str):
         return m.group(1)
     return s
 
-
 def parse_datetime(dt_str: str) -> pd.Timestamp:
     s = norm(dt_str)
     if s == "":
         return pd.NaT
-    fmts = [
-        "%Y/%m/%d %H:%M:%S",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y/%m/%d",
-        "%Y-%m-%d",
-        "%m/%d/%Y %H:%M",
-        "%m/%d/%Y",
-    ]
+    fmts = ["%Y/%m/%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d", "%Y-%m-%d", "%m/%d/%Y %H:%M", "%m/%d/%Y"]
     for f in fmts:
         try:
             return pd.to_datetime(s, format=f)
         except Exception:
             pass
     return pd.to_datetime(s, errors="coerce")
-
 
 def session_bucket(session: str) -> str:
     s = norm(session)
@@ -767,7 +669,6 @@ def session_bucket(session: str) -> str:
     if su in {"E", "EVENING", "NIGHT"}:
         return "晚上"
     return "未知"
-
 
 def load_holidays(path: str) -> Set[pd.Timestamp]:
     days: Set[pd.Timestamp] = set()
@@ -790,7 +691,6 @@ def load_holidays(path: str) -> Set[pd.Timestamp]:
         crawler_logger.error(f"讀取假日清單失敗: {e}")
     return days
 
-
 def is_weekend_or_holiday(ts: pd.Timestamp, holidays: Set[pd.Timestamp]) -> bool:
     if pd.isna(ts):
         return False
@@ -798,23 +698,17 @@ def is_weekend_or_holiday(ts: pd.Timestamp, holidays: Set[pd.Timestamp]) -> bool
         return True
     return ts.normalize() in holidays
 
-
 def extract_t16_numbers(t16: str) -> Set[str]:
     s = norm(t16)
     nums = set(re.findall(r"(\d+)\s*:", s))
     return nums
 
-
 def contact_is_guard(contact: str) -> bool:
     return "警衛" in norm(contact)
-
 
 def contact_is_public_servant(contact: str) -> bool:
     s = norm(contact)
     return any(k in s for k in ["鄰里長", "員警", "警察", "郵差", "公職人員", "警衛"]) or "里長" in s
-
-
-# ------------------------------ 規則實作 ------------------------------
 
 def check_I_three_visits(df: pd.DataFrame) -> List[Dict]:
     recs: List[Dict] = []
@@ -869,11 +763,9 @@ def check_II_questionnaire(df: pd.DataFrame) -> List[Dict]:
 
     g = df.sort_values(["SampleID", "DateTime", "_row"], kind="mergesort").reset_index(drop=True)
 
-    # 標記每個 SampleID 是否最終有代碼 100
     sample_has_100 = g.groupby("SampleID")["ResultCode3"].apply(lambda x: "100" in x.values).to_dict()
     g["SampleHas100"] = g["SampleID"].map(sample_has_100)
 
-    # 標記是否之後有允許的較新代碼
     has_future_allowed = [False] * len(g)
     prev_sid = None
     future_flag = False
@@ -892,28 +784,23 @@ def check_II_questionnaire(df: pd.DataFrame) -> List[Dict]:
         code3 = norm(row["ResultCode3"])
         has_rc = is_filled(row["ResultCode"])
 
-        # A. 該列無結果代碼，不得有訪視問卷/戶抽/戶抽問卷/訪問記錄問卷
         if not has_rc:
             if row["T16Filled"] or row["SamplingFilled"] or row["SamplingQFilled"] or row["InterviewRecordFilled"]:
                 push(row, "【問卷填寫】無結果代碼卻出現訪視問卷/戶抽/戶抽問卷/訪問記錄問卷", "II.問卷填寫")
             continue
 
-        # B. 只要有結果代碼就要有訪視問卷（非未填）
         if not row["T16Filled"]:
             push(row, "【問卷填寫】訪視問卷未填", "II.問卷填寫")
 
-        # C. 禁填代碼不得有戶抽/戶抽問卷/訪問記錄問卷，除非之後有 allowed_newer 代碼
         if code3 in forbidden:
             if row["SamplingFilled"] or row["SamplingQFilled"] or row["InterviewRecordFilled"]:
                 if not row["HasFutureAllowed"] and not row["SampleHas100"]:
-                    push(row, "【問卷填寫】此結果代碼不應有填戶抽/戶抽問卷/訪問記錄問卷，請重新檢查", "II.問卷填寫")
+                    push(row, "【問卷填寫】此結果代碼不應有戶抽/填戶抽問卷/訪問記錄問卷，請重新檢查", "II.問卷填寫")
                     
-        # D. must_have_sampling 代碼必須有戶抽與戶抽問卷
         if code3 in must_have_sampling:
             if not (row["SamplingFilled"] and row["SamplingQFilled"]):
-                push(row, "【問卷填寫】此代碼需填戶抽與戶抽問卷", "II.問卷填寫")
+                push(row, "【問卷填寫】此代碼需戶抽與填戶抽問卷", "II.問卷填寫")
 
-    # E. 該樣本編號最新訪次若結果代碼=100，四欄不得為未填
     for sid, grp in g.groupby("SampleID", sort=False):
         last = grp.iloc[-1]
         if norm(last["ResultCode3"]) == "100":
@@ -949,22 +836,18 @@ def check_III_content(df: pd.DataFrame) -> List[Dict]:
         t16 = norm(row["T16Answer"]) or ""
         t16_nums = extract_t16_numbers(t16)
 
-        # A. Contact=警衛 -> 訪視問卷必須包含 '3' 或 文字包含"警衛"
         if contact_is_guard(contact):
             if ("3" not in t16_nums) and ("警衛" not in t16):
                 push(row, "【問卷內容】接觸方式為警衛，但訪視問卷未包含『警衛或管理員』")
 
-        # B. Contact=對講機 -> 訪視問卷必須包含 '2' 或 文字包含"對講機"
         if "對講機" in contact:
             if ("2" not in t16_nums) and ("對講機" not in t16):
                 push(row, "【問卷內容】接觸方式為對講機，但訪視問卷未包含『對講機』")
 
-        # C. 結果代碼=304 -> Contact 必為警衛
         if code3 == "304":
             if not contact_is_guard(contact):
                 push(row, "【問卷內容】結果代碼為304，但接觸方式並非『警衛』")
 
-        # D. 結果代碼 ∈ {311,312} -> Contact 必為公職人員
         if code3 in {"311", "312"}:
             if not contact_is_public_servant(contact):
                 push(row, "【問卷內容】結果代碼為311或312，但接觸方式非公職人員（鄰里長/員警/郵差等）")
@@ -994,8 +877,6 @@ def check_IV_latest_codes(df: pd.DataFrame) -> List[Dict]:
 
 
 def run_all_checks(csv_path: str, holidays_path: str, output_dir: Path, update_progress_callback) -> Tuple[bool, int]:
-    """執行所有檢查並寫出結果"""
-    
     update_progress_callback(96, 100, "4/4: 讀取資料並準備檢查...")
     try:
         df = pd.read_csv(csv_path, dtype=str, encoding="utf-8-sig", na_filter=False)
@@ -1005,7 +886,6 @@ def run_all_checks(csv_path: str, holidays_path: str, output_dir: Path, update_p
     
     df.columns = [c.strip() for c in df.columns]
 
-    # 衍生欄位
     df = df.copy()
     df["_row"] = range(len(df))
     df["ResultCode3"] = df["ResultCode"].apply(normalize_result_code)
@@ -1020,7 +900,6 @@ def run_all_checks(csv_path: str, holidays_path: str, output_dir: Path, update_p
     df["SamplingQFilled"] = df["SamplingQ"].apply(is_filled)
     df["InterviewRecordFilled"] = df["InterviewRecord"].apply(is_filled)
 
-    # 執行所有檢查
     update_progress_callback(97, 100, "4/4: 執行邏輯一致性檢查...")
     all_issues = []
     all_issues.extend(check_I_three_visits(df))
@@ -1028,19 +907,16 @@ def run_all_checks(csv_path: str, holidays_path: str, output_dir: Path, update_p
     all_issues.extend(check_III_content(df))
     all_issues.extend(check_IV_latest_codes(df))
 
-    # 按訪員分組
     issues_df = pd.DataFrame(all_issues)
     
     if len(issues_df) == 0:
         crawler_logger.info("恭喜！沒有發現任何問題。")
-        # 仍輸出空的彙總檔
         summary = pd.DataFrame([{"訪員姓名": "全部", "違規總數": 0}])
         summary_path = output_dir / "check_summary_by_interviewer.csv"
         summary.to_csv(summary_path, index=False, encoding="utf-8-sig")
         return True, 0
 
     update_progress_callback(98, 100, "4/4: 輸出違規清單檔案...")
-    # 按訪員輸出個別檔案
     for interviewer, grp in issues_df.groupby("訪員姓名"):
         safe_name = re.sub(r'[\\/:*?"<>|]', '_', str(interviewer))
         filename = f"interviewer_{safe_name}.csv"
@@ -1050,7 +926,6 @@ def run_all_checks(csv_path: str, holidays_path: str, output_dir: Path, update_p
         )
         crawler_logger.info(f"已輸出：{filename} ({len(grp)} 筆問題)")
 
-    # 彙總統計
     summary = issues_df.groupby("訪員姓名").size().reset_index(name="違規總數")
     summary = summary.sort_values("違規總數", ascending=False)
     summary_path = output_dir / "check_summary_by_interviewer.csv"
@@ -1062,132 +937,215 @@ def run_all_checks(csv_path: str, holidays_path: str, output_dir: Path, update_p
 
 
 # =================================================================
-# GUI 區塊 (使用 Tkinter)
+# GUI 區塊 (使用 CustomTkinter) - UI 終極美化版 v2.3
 # =================================================================
 
-class VisitCrawlerApp(tk.Tk):
+# 設定 CustomTkinter 預設主題
+ctk.set_appearance_mode("System")  # 預設為系統主題
+ctk.set_default_color_theme("blue")  # 使用藍色主題
+
+class VisitCrawlerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("訪次檢查工具 By.莊旻叡")
-        self.geometry("600x450")
-        
+        self.title("訪次資料匯出檢查 | By.莊旻叡")
+        self.geometry("780x650")
+        self.resizable(False, False) 
+
         # 狀態變數
-        self.email_var = tk.StringVar(value="")
-        self.password_var = tk.StringVar()
-        self.project_var = tk.StringVar(value="35") # 預設值
-        self.wave_var = tk.StringVar(value="99") # 預設值
-        self.holiday_path_var = tk.StringVar(value="選擇國定假日清單 (選填)")
-        self.output_dir = Path.cwd() / "Output" # 預設輸出到當前目錄的 Output 資料夾
+        self.email_var = ctk.StringVar(value="")
+        self.password_var = ctk.StringVar()
+        self.project_var = ctk.StringVar(value="35")
+        self.wave_var = ctk.StringVar(value="99")
+        self.holiday_path_var = ctk.StringVar(value="未選擇")
+        self._full_holiday_path: Optional[Path] = None
+        self.output_dir = Path.cwd() / "Output"
         
-        # 建立 GUI 元件
+        # 顏色常量 (CTk 會自動處理深淺模式)
+        self.ACCENT_COLOR = "#1F4E79" # Dark Navy/Blue
+        self.FONT_FAMILY = "微軟正黑體"
+        
         self._create_widgets()
         self.bind('<Return>', lambda e: self._start_crawl_thread())
         
     def _create_widgets(self):
-        # 輸入框架
-        input_frame = ttk.LabelFrame(self, text="登入與專案設定", padding="10 10 10 10")
-        input_frame.pack(padx=10, pady=10, fill="x")
+        # 主容器框架 (使用 CTkFrame，padding 與圓角效果)
+        main_frame = ctk.CTkFrame(self, fg_color="transparent")
+        main_frame.pack(fill="both", expand=True, padx=30, pady=30)
+
+        # 頂部標題
+        ctk.CTkLabel(main_frame, text="訪次資料匯出檢查", 
+                     font=(self.FONT_FAMILY, 24, 'bold'),
+                     text_color=self.ACCENT_COLOR).pack(pady=(0, 25))
+
+        # --- 1. 執行參數框架 ---
+        # 使用 CTkFrame 模擬 LabelFrame，視覺上更簡潔
+        input_frame = ctk.CTkFrame(main_frame, corner_radius=10)
+        input_frame.pack(padx=0, pady=(0, 25), fill="x", ipady=15)
 
         # 網格配置
-        input_frame.columnconfigure(0, weight=1)
-        input_frame.columnconfigure(1, weight=3)
+        input_frame.columnconfigure(0, weight=1, minsize=160) 
+        input_frame.columnconfigure(1, weight=3) 
 
-        # 帳號
-        ttk.Label(input_frame, text="帳號 (Email):").grid(row=0, column=0, sticky="w", pady=5, padx=5)
-        ttk.Entry(input_frame, textvariable=self.email_var).grid(row=0, column=1, sticky="ew", pady=5, padx=5)
+        row_index = 0
+        pady_val = 10
+        padx_val = 15
+        
+        # A. 登入憑證 (分組標題)
+        ctk.CTkLabel(input_frame, text="[ 登入憑證 ]", 
+                     font=(self.FONT_FAMILY, 15, 'bold'), 
+                     text_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"][0], # 使用主題色
+                     ).grid(row=row_index, column=0, sticky="w", pady=(pady_val, 0), padx=padx_val, columnspan=2)
+        row_index += 1
+        
+        # 帳號 (Email)
+        ctk.CTkLabel(input_frame, text="帳號 (Email):", font=(self.FONT_FAMILY, 13, 'bold')).grid(row=row_index, column=0, sticky="w", pady=pady_val, padx=padx_val)
+        ctk.CTkEntry(input_frame, textvariable=self.email_var, font=(self.FONT_FAMILY, 13)).grid(row=row_index, column=1, sticky="ew", pady=pady_val, padx=padx_val)
+        row_index += 1
 
         # 密碼
-        ttk.Label(input_frame, text="密碼:").grid(row=1, column=0, sticky="w", pady=5, padx=5)
-        ttk.Entry(input_frame, textvariable=self.password_var, show="*").grid(row=1, column=1, sticky="ew", pady=5, padx=5)
+        ctk.CTkLabel(input_frame, text="密碼:", font=(self.FONT_FAMILY, 13, 'bold')).grid(row=row_index, column=0, sticky="w", pady=pady_val, padx=padx_val)
+        ctk.CTkEntry(input_frame, textvariable=self.password_var, show="•", font=(self.FONT_FAMILY, 13)).grid(row=row_index, column=1, sticky="ew", pady=pady_val, padx=padx_val)
+        row_index += 1
 
-        # Project ID
-        ttk.Label(input_frame, text="Project ID:").grid(row=2, column=0, sticky="w", pady=5, padx=5)
-        ttk.Entry(input_frame, textvariable=self.project_var).grid(row=2, column=1, sticky="ew", pady=5, padx=5)
+        # B. 專案配置 (分組標題)
+        ctk.CTkLabel(input_frame, text="[ 專案配置 ]", 
+                     font=(self.FONT_FAMILY, 15, 'bold'), 
+                     text_color=ctk.ThemeManager.theme["CTkButton"]["fg_color"][0],
+                     ).grid(row=row_index, column=0, sticky="w", pady=(pady_val*2, 0), padx=padx_val, columnspan=2)
+        row_index += 1
+        
+        # Project ID / Wave ID 容器
+        project_wave_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
+        project_wave_frame.grid(row=row_index, column=1, sticky="ew", pady=pady_val, padx=padx_val)
+        project_wave_frame.columnconfigure(0, weight=1) 
+        project_wave_frame.columnconfigure(2, weight=0) # 分隔符不佔空間
+        project_wave_frame.columnconfigure(3, weight=1) 
 
-        # Wave ID
-        ttk.Label(input_frame, text="Wave ID:").grid(row=3, column=0, sticky="w", pady=5, padx=5)
-        ttk.Entry(input_frame, textvariable=self.wave_var).grid(row=3, column=1, sticky="ew", pady=5, padx=5)
+        ctk.CTkLabel(input_frame, text="Project ID / Wave ID:", font=(self.FONT_FAMILY, 13, 'bold')).grid(row=row_index, column=0, sticky="w", pady=pady_val, padx=padx_val)
+        
+        ctk.CTkEntry(project_wave_frame, textvariable=self.project_var, font=(self.FONT_FAMILY, 13)).grid(row=0, column=0, sticky="ew")
+        ctk.CTkLabel(project_wave_frame, text=" / ", font=(self.FONT_FAMILY, 13, 'bold')).grid(row=0, column=2, sticky="ew", padx=10)
+        ctk.CTkEntry(project_wave_frame, textvariable=self.wave_var, font=(self.FONT_FAMILY, 13)).grid(row=0, column=3, sticky="ew")
+        row_index += 1
+        
+        # 假日清單按鈕 (優化 UX)
+        holiday_control_frame = ctk.CTkFrame(input_frame, fg_color="transparent")
+        holiday_control_frame.grid(row=row_index, column=1, sticky="ew", pady=pady_val, padx=padx_val)
+        holiday_control_frame.columnconfigure(0, weight=0) 
+        holiday_control_frame.columnconfigure(1, weight=1) 
 
-        # 假日清單按鈕
-        ttk.Button(input_frame, text="選擇假日清單檔案", command=self._select_holiday_file).grid(row=4, column=0, sticky="ew", pady=5, padx=5)
-        self.holiday_label = ttk.Label(input_frame, textvariable=self.holiday_path_var, wraplength=400)
-        self.holiday_label.grid(row=4, column=1, sticky="w", pady=5, padx=5)
+        ctk.CTkLabel(input_frame, text="國定假日清單 (選填):", font=(self.FONT_FAMILY, 13, 'bold')).grid(row=row_index, column=0, sticky="w", pady=pady_val, padx=padx_val)
+        
+        ctk.CTkButton(holiday_control_frame, text="選擇檔案...", command=self._select_holiday_file, 
+                      width=150, font=(self.FONT_FAMILY, 12),
+                      fg_color=("gray70", "gray35") # 次要按鈕樣式
+                      ).grid(row=0, column=0, sticky="w")
+        
+        # 顯示選中的檔案名稱
+        self.holiday_path_display = ctk.CTkLabel(holiday_control_frame, textvariable=self.holiday_path_var, wraplength=400, 
+                                                 font=(self.FONT_FAMILY, 11), text_color=("gray40", "gray60"))
+        self.holiday_path_display.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        row_index += 1
 
-        # 執行按鈕
-        self.run_button = ttk.Button(self, text="開始爬取與檢查", command=self._start_crawl_thread)
-        self.run_button.pack(pady=10)
+        # --- 2. 執行按鈕 ---
+        self.run_button = ctk.CTkButton(main_frame, text="▶ 啟動爬取與檢查", command=self._start_crawl_thread, 
+                                        height=50, 
+                                        font=(self.FONT_FAMILY, 16, 'bold'))
+        self.run_button.pack(pady=(20, 30), fill="x")
 
-        # 進度條框架
-        progress_frame = ttk.LabelFrame(self, text="執行進度", padding="10 10 10 10")
-        progress_frame.pack(padx=10, pady=10, fill="x")
+        # --- 3. 執行進度框架 ---
+        progress_frame = ctk.CTkFrame(main_frame, corner_radius=10)
+        progress_frame.pack(padx=0, pady=(0, 25), fill="x", ipady=15)
+        
+        # 狀態標籤 
+        self.status_label = ctk.CTkLabel(progress_frame, text="系統待命中...", anchor="center", 
+                                         font=(self.FONT_FAMILY, 15, 'bold'), 
+                                         text_color=self.ACCENT_COLOR)
+        self.status_label.pack(pady=(5, 15), fill="x")
         
         # 進度條
-        self.progress = ttk.Progressbar(progress_frame, orient="horizontal", length=500, mode="determinate")
-        self.progress.pack(pady=5, fill="x")
-        
-        # 狀態標籤
-        self.status_label = ttk.Label(progress_frame, text="待命...")
-        self.status_label.pack(pady=5, fill="x")
+        self.progress = ctk.CTkProgressBar(progress_frame, orientation="horizontal", height=20)
+        self.progress.set(0)
+        self.progress.pack(pady=5, padx=15, fill="x")
+
+        # --- 4. 資訊區與模式切換 ---
+        info_frame = ctk.CTkFrame(main_frame, fg_color="transparent")
+        info_frame.pack(padx=0, pady=(0, 0), fill="x")
+        info_frame.columnconfigure(0, weight=1)
+        info_frame.columnconfigure(1, weight=1)
 
         # 輸出路徑
-        ttk.Label(self, text=f"輸出資料夾: {self.output_dir}").pack(pady=(0, 5))
+        self.output_label = ctk.CTkLabel(info_frame, text=f"輸出資料夾: {self.output_dir.name}", 
+                                         font=(self.FONT_FAMILY, 11), 
+                                         anchor="w", text_color=self.ACCENT_COLOR)
+        self.output_label.grid(row=0, column=0, sticky="w")
         
+        # 主題切換按鈕
+        self.appearance_mode_optionemenu = ctk.CTkOptionMenu(info_frame, 
+                                                             values=["Light", "Dark", "System"],
+                                                             command=self.change_appearance_mode_event,
+                                                             width=100,
+                                                             font=(self.FONT_FAMILY, 11))
+        self.appearance_mode_optionemenu.set("System")
+        self.appearance_mode_optionemenu.grid(row=0, column=1, sticky="e")
+        
+        # 作者資訊
+        ctk.CTkLabel(info_frame, text="By.莊旻叡", 
+                     font=(self.FONT_FAMILY, 9), text_color=("gray60", "gray40")).grid(row=1, column=0, sticky="w")
+
+    def change_appearance_mode_event(self, new_appearance_mode: str):
+        ctk.set_appearance_mode(new_appearance_mode)
+
     def _select_holiday_file(self):
-        """選擇國定假日清單檔案"""
         file_path = filedialog.askopenfilename(
             title="選擇國定假日清單 (.txt)",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
         )
         if file_path:
-            self.holiday_path_var.set(file_path)
+            self._full_holiday_path = Path(file_path)
+            self.holiday_path_var.set(self._full_holiday_path.name) 
         else:
-            self.holiday_path_var.set("選擇國定假日清單 (選填)")
+            self.holiday_path_var.set("未選擇")
+            self._full_holiday_path = None
 
     def _update_progress(self, current, total, message):
-        """主執行緒安全地更新進度條和狀態"""
-        percentage = (current / total) * 100
-        self.progress["value"] = percentage
-        self.status_label["text"] = f"{message} ({percentage:.1f}%)"
+        percentage = max(0, min(100, (current / total) * 100))
+        
+        # CTkProgressBar 使用 set(value)
+        self.progress.set(percentage / 100) 
+        self.status_label.configure(text=f"{message} ({percentage:.1f}%)")
         self.update_idletasks()
         
     def _start_crawl_thread(self):
-        """啟動一個獨立執行緒來執行爬蟲邏輯"""
-        
-        # 驗證輸入
         email = self.email_var.get().strip()
         password = self.password_var.get().strip()
         project_id = self.project_var.get().strip()
         wave_id = self.wave_var.get().strip()
-        holiday_path = self.holiday_path_var.get().strip()
         
+        holiday_path = str(self._full_holiday_path) if self._full_holiday_path else ""
+
         if not email or "@" not in email:
-            messagebox.showerror("錯誤", "請輸入有效的 Email 帳號。")
+            messagebox.showerror("驗證錯誤", "請輸入有效的 Email 帳號。")
             return
         if not password:
-            messagebox.showerror("錯誤", "請輸入密碼。")
+            messagebox.showerror("驗證錯誤", "請輸入密碼。")
             return
         if not project_id.isdigit() or not wave_id.isdigit():
-            messagebox.showerror("錯誤", "Project ID 和 Wave ID 必須是數字。")
+            messagebox.showerror("驗證錯誤", "Project ID 和 Wave ID 必須是數字。")
             return
             
-        self.run_button["state"] = "disabled"
-        self.progress["value"] = 0
-        self.status_label["text"] = "初始化..."
+        self.run_button.configure(state="disabled")
+        self.progress.set(0)
+        self.status_label.configure(text="初始化...")
         
-        # 確保輸出目錄存在
         try:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             output_csv = str(self.output_dir / "visit_records.csv")
         except Exception as e:
             messagebox.showerror("錯誤", f"無法建立輸出目錄: {e}")
-            self.run_button["state"] = "normal"
+            self.run_button.configure(state="normal")
             return
             
-        # 處理假日清單路徑
-        if holiday_path == "選擇國定假日清單 (選填)":
-            holiday_path = ""
-        
-        # 啟動執行緒
         threading.Thread(
             target=self._run_crawl_and_check, 
             args=(email, password, int(project_id), int(wave_id), output_csv, holiday_path),
@@ -1195,7 +1153,7 @@ class VisitCrawlerApp(tk.Tk):
         ).start()
 
     def _run_crawl_and_check(self, email, password, project, wave, output_csv, holiday_path):
-        """在執行緒中運行核心爬蟲和檢查邏輯"""
+        total_issues = 0
         try:
             session = create_session()
             
@@ -1222,35 +1180,33 @@ class VisitCrawlerApp(tk.Tk):
             if success:
                 messagebox.showinfo(
                     "完成", 
-                    f"資料匯出與檢查成功！\n\n檔案已輸出至：{self.output_dir}\n\n共發現 {total_issues} 個問題。\n\n本程式由莊旻叡撰寫\n特別感謝陳逸龍教授博士加先生的協助開發"
+                    f"資料匯出與檢查成功！\n\n檔案已輸出至：{self.output_dir.name} 資料夾\n\n共發現 {total_issues} 個問題。\n\n本程式由莊旻叡撰寫\n特別感謝陳逸龍教授加博士先生的協助開發"
                 )
             else:
-                messagebox.showwarning("警告", f"資料爬取與檢查成功，但檢查過程中發生錯誤或未生成彙總檔案。\n輸出路徑：{self.output_dir}")
+                messagebox.showwarning("警告", f"資料爬取與檢查成功，但檢查過程中發生錯誤或未生成彙總檔案。\n輸出路徑：{self.output_dir.name}")
 
         except requests.exceptions.HTTPError as e:
             messagebox.showerror("錯誤", f"HTTP 錯誤: 檢查您的 Project/Wave ID 或登入狀態。\n錯誤細節: {e}")
-            self._update_progress(0, 100, "錯誤：HTTP 失敗。")
+            self._update_progress(0, 100, "❌ 錯誤：HTTP 失敗。")
         except RuntimeError as e:
             messagebox.showerror("錯誤", f"執行錯誤: {e}")
-            self._update_progress(0, 100, "錯誤：登入或執行失敗。")
+            self._update_progress(0, 100, "❌ 錯誤：登入或執行失敗。")
         except Exception as e:
             messagebox.showerror("嚴重錯誤", f"發生無法預期的錯誤: {e}")
-            self._update_progress(0, 100, "錯誤：執行失敗。")
+            self._update_progress(0, 100, "❌ 錯誤：執行失敗。")
         finally:
-            self.run_button["state"] = "normal"
+            self.run_button.configure(state="normal")
 
 
 if __name__ == "__main__":
-    # 確保 logger 的輸出不會被 GUI 介面吞掉
-    # 創建一個檔案 handler 以便在打包後仍能記錄日誌
     try:
         log_dir = Path.cwd() / "logs"
         log_dir.mkdir(exist_ok=True)
-        file_handler = logging.FileHandler(log_dir / 'crawler_log.txt', encoding='utf-8')
-        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
-        crawler_logger.addHandler(file_handler)
+        if not any(isinstance(handler, logging.FileHandler) for handler in crawler_logger.handlers):
+            file_handler = logging.FileHandler(log_dir / 'crawler_log.txt', encoding='utf-8')
+            file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+            crawler_logger.addHandler(file_handler)
     except Exception as e:
-        # 如果無法建立日誌檔，仍讓程式繼續執行
         print(f"無法設定日誌檔案: {e}")
         
     app = VisitCrawlerApp()
